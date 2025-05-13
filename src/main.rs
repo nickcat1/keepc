@@ -131,8 +131,6 @@ fn new_command(command: Option<String>, description: Option<String>) -> Result<(
 
     store.commands.insert(command.clone(), description);
     store.save(&path)?;
-
-    println!("Added command: {}", command);
     Ok(())
 }
 
@@ -148,7 +146,6 @@ fn list_commands() -> Result<()> {
     for (cmd, desc) in &store.commands {
         println!("$ \x1b[34m{}\x1b[0m: {}", cmd, desc);
     }
-
     Ok(())
 }
 
@@ -174,21 +171,52 @@ fn search_commands(pattern: String) -> Result<()> {
     if !found {
         println!("No commands found matching '{}'", pattern);
     }
-
     Ok(())
 }
 
 fn delete_command(command: String) -> Result<()> {
+    use std::io::{self, BufRead};
+
     let path = get_commands_file()?;
     let mut store = CommandStore::load(&path)?;
 
-    if store.commands.remove(&command).is_some() {
-        store.save(&path)?;
-        println!("Deleted command: {}", command);
-    } else {
-        println!("Command not found: {}", command);
-    }
+    // Find all commands that match the pattern
+    let pattern = command.to_lowercase();
+    let matching_commands: Vec<String> = store.commands.keys()
+        .filter(|cmd| cmd.to_lowercase().contains(&pattern))
+        .cloned()
+        .collect();
+    match matching_commands.len() {
+        0 => {
+            println!("No commands found matching '{}'", command);
+        },
+        _ => {
+            // Multiple matches, ask user which one to delete
+            println!("Found {} matching commands:", matching_commands.len());
+            for (i, cmd) in matching_commands.iter().enumerate() {
+                println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+                         i + 1, 
+                         cmd, 
+                         store.commands.get(cmd).unwrap_or(&String::new()));
+            }
 
+            print!("Enter a number to delete: ");
+            io::stdout().flush()?;
+
+            let stdin = io::stdin();
+            let mut line = String::new();
+            stdin.lock().read_line(&mut line)?;
+
+            if let Ok(choice) = line.trim().parse::<usize>() {
+                if choice <= matching_commands.len() {
+                    let cmd_to_delete = &matching_commands[choice - 1];
+                    store.commands.remove(cmd_to_delete);
+                    store.save(&path)?;
+                    println!("Deleted command: {}", cmd_to_delete);
+                }
+            };
+        }
+    }
     Ok(())
 }
 
@@ -218,7 +246,7 @@ fn edit_commands() -> Result<()> {
     .arg(&temp_path)
     .status()
     .context(format!("Failed to open editor: {}", editor))?;
-    
+
     if !status.success() {
         return Err(anyhow::anyhow!("Editor exited with non-zero status"));
     }
@@ -281,7 +309,6 @@ fn execute_command(command: String) -> Result<()> {
     } else {
         println!("Command not found: {}", command);
     }
-
     Ok(())
 }
 

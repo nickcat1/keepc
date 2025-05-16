@@ -3,16 +3,14 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
 
-type CommandsMap = HashMap<String, String>;
-
 #[derive(Serialize, Deserialize, Debug)]
 struct CommandStore {
-    commands: CommandsMap,
+    commands: HashMap<String, String>,
 }
 
 impl CommandStore {
@@ -36,11 +34,11 @@ impl CommandStore {
     fn save(&self, path: &PathBuf) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).context("Failed to create directory for commands file")?;
+            fs::create_dir_all(parent).context("Failed to create directory")?;
         }
 
         let file = File::create(path).context("Failed to create commands file")?;
-        serde_json::to_writer_pretty(file, self).context("Failed to write commands to file")?;
+        serde_json::to_writer_pretty(file, self).context("Failed to write commands")?;
         Ok(())
     }
 }
@@ -88,7 +86,7 @@ enum Commands {
 
 
 fn get_commands_file() -> Result<PathBuf> {
-    let mut path = dirs::config_dir().context("Could not determine home directory")?;
+    let mut path = dirs::config_dir().context("Could not determine config directory")?;
     path.push("keepc");
     Ok(path.join("commands.json"))
 }
@@ -116,7 +114,7 @@ fn new_command(command: Option<String>, description: Option<String>) -> Result<(
         return Err(anyhow::anyhow!("Command cannot be empty"));
     }
 
-    // Get description from user if not provided
+    // Get description from user if provided
     let description = match description {
         Some(desc) => desc,
         None => {
@@ -191,7 +189,6 @@ fn delete_command(command: String) -> Result<()> {
             println!("No commands found matching '{}'", command);
         },
         _ => {
-            // Multiple matches, ask user which one to delete
             println!("Found {} matching commands:", matching_commands.len());
             for (i, cmd) in matching_commands.iter().enumerate() {
                 println!("[{}] \x1b[34m{}\x1b[0m: {}", 
@@ -224,24 +221,14 @@ fn edit_commands() -> Result<()> {
     let path = get_commands_file()?;
     let mut store = CommandStore::load(&path)?;
 
-    // Create a temporary file
+    // Create and write commands a temporary file
     let mut temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
-
-    // Write commands to the temporary file
     for (cmd, desc) in &store.commands {
-        writeln!(temp_file, "{}:::{}", cmd, desc).context("Failed to write to temporary file")?;
+        writeln!(temp_file, "{}:::{}", cmd, desc).context("Failed to write to temp file")?;
     }
-
-    // Get the path to the temporary file
     let temp_path = temp_file.path().to_owned();
-
-    // Close the file to ensure all data is written
-    temp_file.flush().context("Failed to flush temporary file")?;
-
-    // Determine which editor to use
+    temp_file.flush().context("Failed to flush temp file")?;
     let editor = std::env::var("EDITOR").unwrap_or_else(|_| "nano".to_string());
-
-    // Open the editor
     let status = Command::new(&editor)
     .arg(&temp_path)
     .status()
@@ -250,23 +237,17 @@ fn edit_commands() -> Result<()> {
     if !status.success() {
         return Err(anyhow::anyhow!("Editor exited with non-zero status"));
     }
-
-    // Read the edited file
     let mut content = String::new();
-    File::open(&temp_path)
-    .context("Failed to open temporary file after editing")?
-    .read_to_string(&mut content)
-    .context("Failed to read temporary file after editing")?;
-
-    // Parse the edited content
+    std::io::Read::read_to_string(
+        &mut File::open(&temp_path).context("Failed to open temporary file after editing")?,
+        &mut content
+    ).context("Failed to read temporary file after editing")?;
     let mut new_commands = HashMap::new();
     for line in content.lines() {
         if let Some((cmd, desc)) = line.split_once(":::") {
             new_commands.insert(cmd.trim().to_string(), desc.trim().to_string());
         }
     }
-
-    // Update and save the commands
     store.commands = new_commands;
     store.save(&path)?;
 
@@ -275,39 +256,57 @@ fn edit_commands() -> Result<()> {
 }
 
 fn execute_command(command: String) -> Result<()> {
+    use std::io::{self, BufRead};
+
     let path = get_commands_file()?;
     let store = CommandStore::load(&path)?;
 
-    if let Some(_cmd) = store.commands.get(&command) {
-        println!("Executing: {}", command);
+    // Find all commands that match the pattern
+    let pattern = command.to_lowercase();
+    let matching_commands: Vec<String> = store.commands.keys()
+        .filter(|cmd| cmd.to_lowercase().contains(&pattern))
+        .cloned()
+        .collect();
+    match matching_commands.len() {
+        0 => {
+            println!("No commands found matching '{}'", command);
+        },
+        _ => {
+            println!("Found {} matching commands:", matching_commands.len());
+            for (i, cmd) in matching_commands.iter().enumerate() {
+                println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+                         i + 1, 
+                         cmd, 
+                         store.commands.get(cmd).unwrap_or(&String::new()));
+            }
 
-        // Determine the shell to use
-        let shell = if cfg!(target_os = "windows") {
-            "cmd"
-        } else {
-            "sh"
-        };
+            print!("Enter a number to execute: ");
+            io::stdout().flush()?;
 
-        let shell_arg = if cfg!(target_os = "windows") {
-            "/C"
-        } else {
-            "-c"
-        };
+            let stdin = io::stdin();
+            let mut line = String::new();
+            stdin.lock().read_line(&mut line)?;
 
-        let status = Command::new(shell)
-        .arg(shell_arg)
-        .arg(&command)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .context(format!("Failed to execute command: {}", command))?;
-
-        if !status.success() {
-            return Err(anyhow::anyhow!("Command exited with non-zero status"));
+            if let Ok(choice) = line.trim().parse::<usize>() {
+                if choice <= matching_commands.len() {
+                    let cmd_to_execute = &matching_commands[choice - 1];
+                    println!("Executing: {}", cmd_to_execute);
+                    let (shell, shell_arg) = if cfg!(target_os = "windows") {
+                        ("cmd", "/C")
+                    } else {
+                        ("sh", "-c")
+                    };
+                    let _status = Command::new(shell)
+                    .arg(shell_arg)
+                    .arg(&cmd_to_execute)
+                    .stdin(Stdio::inherit())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .status()
+                    .context(format!("Failed to execute: {}", cmd_to_execute))?;
+                }
+            };
         }
-    } else {
-        println!("Command not found: {}", command);
     }
     Ok(())
 }

@@ -184,11 +184,9 @@ fn delete_command(command: String) -> Result<()> {
         .filter(|cmd| cmd.to_lowercase().contains(&pattern))
         .cloned()
         .collect();
-    match matching_commands.len() {
-        0 => {
-            println!("No commands found matching '{}'", command);
-        },
-        _ => {
+    if matching_commands.is_empty() {
+        println!("No commands found matching '{}'", command);
+    } else {
             println!("Found {} matching commands:", matching_commands.len());
             for (i, cmd) in matching_commands.iter().enumerate() {
                 println!("[{}] \x1b[34m{}\x1b[0m: {}", 
@@ -213,7 +211,6 @@ fn delete_command(command: String) -> Result<()> {
                 }
             };
         }
-    }
     Ok(())
 }
 
@@ -267,11 +264,9 @@ fn execute_command(command: String) -> Result<()> {
         .filter(|cmd| cmd.to_lowercase().contains(&pattern))
         .cloned()
         .collect();
-    match matching_commands.len() {
-        0 => {
-            println!("No commands found matching '{}'", command);
-        },
-        _ => {
+    if matching_commands.is_empty() {
+        println!("No commands found matching '{}'", command);
+    } else {
             println!("Found {} matching commands:", matching_commands.len());
             for (i, cmd) in matching_commands.iter().enumerate() {
                 println!("[{}] \x1b[34m{}\x1b[0m: {}", 
@@ -307,13 +302,11 @@ fn execute_command(command: String) -> Result<()> {
                 }
             };
         }
-    }
     Ok(())
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    
     match cli.command {
         Some(Commands::New { command, description }) => new_command(command, description),
         Some(Commands::List) => list_commands(),

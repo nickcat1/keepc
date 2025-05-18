@@ -1,4 +1,4 @@
-## keepc
+## What is keepc?
 Keep Command or Keepc is a meta cli program designed to keep important commands that are difficult to remember. Keepc is coded in The Rust Programming Language.
 
 ## How to install
@@ -33,6 +33,8 @@ Create a pull request.
 
 ## TODO
 Add other ways to run existing commands. For example, list/ls, new/add, run/execute....
+
+Make rm and run commands search in descriptions.
 
 ## License
 Distributed under the [GPL-3.0 License](LICENSE).

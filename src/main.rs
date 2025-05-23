@@ -72,7 +72,7 @@ enum Commands {
     // Delete a command
     #[command(about = "Delete a saved command")]
     Rm {
-        command: String,
+        pattern: String,
     },
     // Edit commands in a text editor
     #[command(about = "Edit commands in a text editor")]
@@ -80,7 +80,7 @@ enum Commands {
     // Execute a saved command
     #[command(about = "Execute a saved command")]
     Run {
-        command: String,
+        pattern: String,
     },
 }
 
@@ -93,7 +93,6 @@ fn get_commands_file() -> Result<PathBuf> {
 
 fn new_command(command: Option<String>, description: Option<String>) -> Result<()> {
     use std::io::{self, BufRead};
-
     let path = get_commands_file()?;
     let mut store = CommandStore::load(&path)?;
 
@@ -103,13 +102,11 @@ fn new_command(command: Option<String>, description: Option<String>) -> Result<(
         None => {
             print!("Enter command: ");
             io::stdout().flush()?;
-            let stdin = io::stdin();
             let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
+            io::stdin().lock().read_line(&mut line)?;
             line.trim().to_string()
         }
     };
-
     if command.is_empty() {
         return Err(anyhow::anyhow!("Command cannot be empty"));
     }
@@ -120,13 +117,11 @@ fn new_command(command: Option<String>, description: Option<String>) -> Result<(
         None => {
             print!("Enter description (optional): ");
             io::stdout().flush()?;
-            let stdin = io::stdin();
             let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
+            io::stdin().lock().read_line(&mut line)?;
             line.trim().to_string()
         }
     };
-
     store.commands.insert(command.clone(), description);
     store.save(&path)?;
     Ok(())
@@ -143,7 +138,7 @@ fn list_commands() -> Result<()> {
 
     for (cmd, desc) in &store.commands {
         println!("$ \x1b[34m{}\x1b[0m: {}", cmd, desc);
-    }
+    };
     Ok(())
 }
 
@@ -168,49 +163,46 @@ fn search_commands(pattern: String) -> Result<()> {
 
     if !found {
         println!("No commands found matching '{}'", pattern);
-    }
+    };
     Ok(())
 }
 
-fn delete_command(command: String) -> Result<()> {
+fn delete_command(pattern: String) -> Result<()> {
     use std::io::{self, BufRead};
-
     let path = get_commands_file()?;
     let mut store = CommandStore::load(&path)?;
 
     // Find all commands that match the pattern
-    let pattern = command.to_lowercase();
-    let matching_commands: Vec<String> = store.commands.keys()
-        .filter(|cmd| cmd.to_lowercase().contains(&pattern))
-        .cloned()
+    let pattern = pattern.to_lowercase();
+    let matching_commands: Vec<String> = store.commands.iter()
+        .filter(|(cmd, desc)| cmd.to_lowercase().contains(&pattern) || desc.to_lowercase().contains(&pattern))
+        .map(|(cmd, _)| cmd.clone())
         .collect();
     if matching_commands.is_empty() {
-        println!("No commands found matching '{}'", command);
+        println!("No commands found matching '{}'", pattern);
     } else {
-            println!("Found {} matching commands:", matching_commands.len());
-            for (i, cmd) in matching_commands.iter().enumerate() {
-                println!("[{}] \x1b[34m{}\x1b[0m: {}", 
-                         i + 1, 
-                         cmd, 
-                         store.commands.get(cmd).unwrap_or(&String::new()));
+        println!("Found {} matching commands:", matching_commands.len());
+        for (i, cmd) in matching_commands.iter().enumerate() {
+            println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+            i + 1, 
+            cmd, 
+            store.commands.get(cmd).unwrap_or(&String::new()));
+        };
+        print!("Enter a number to delete: ");
+        io::stdout().flush()?;
+
+        let mut line = String::new();
+        io::stdin().lock().read_line(&mut line)?;
+
+        if let Ok(choice) = line.trim().parse::<usize>() {
+            if choice <= matching_commands.len() {
+                let cmd_to_delete = &matching_commands[choice - 1];
+                store.commands.remove(cmd_to_delete);
+                store.save(&path)?;
+                println!("Deleted command: {}", cmd_to_delete);
             }
-
-            print!("Enter a number to delete: ");
-            io::stdout().flush()?;
-
-            let stdin = io::stdin();
-            let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
-
-            if let Ok(choice) = line.trim().parse::<usize>() {
-                if choice <= matching_commands.len() {
-                    let cmd_to_delete = &matching_commands[choice - 1];
-                    store.commands.remove(cmd_to_delete);
-                    store.save(&path)?;
-                    println!("Deleted command: {}", cmd_to_delete);
-                }
-            };
-        }
+        };
+    };
     Ok(())
 }
 
@@ -252,56 +244,53 @@ fn edit_commands() -> Result<()> {
     Ok(())
 }
 
-fn execute_command(command: String) -> Result<()> {
+fn execute_command(pattern: String) -> Result<()> {
     use std::io::{self, BufRead};
-
     let path = get_commands_file()?;
     let store = CommandStore::load(&path)?;
 
     // Find all commands that match the pattern
-    let pattern = command.to_lowercase();
-    let matching_commands: Vec<String> = store.commands.keys()
-        .filter(|cmd| cmd.to_lowercase().contains(&pattern))
-        .cloned()
+    let pattern = pattern.to_lowercase();
+    let matching_commands: Vec<String> = store.commands.iter()
+        .filter(|(cmd, desc)| cmd.to_lowercase().contains(&pattern) || desc.to_lowercase().contains(&pattern))
+        .map(|(cmd, _)| cmd.clone())
         .collect();
     if matching_commands.is_empty() {
-        println!("No commands found matching '{}'", command);
+        println!("No commands found matching '{}'", pattern);
     } else {
-            println!("Found {} matching commands:", matching_commands.len());
-            for (i, cmd) in matching_commands.iter().enumerate() {
-                println!("[{}] \x1b[34m{}\x1b[0m: {}", 
-                         i + 1, 
-                         cmd, 
-                         store.commands.get(cmd).unwrap_or(&String::new()));
+        println!("Found {} matching commands:", matching_commands.len());
+        for (i, cmd) in matching_commands.iter().enumerate() {
+            println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+            i + 1, 
+            cmd, 
+            store.commands.get(cmd).unwrap_or(&String::new()));
+        };
+        print!("Enter a number to execute: ");
+        io::stdout().flush()?;
+
+        let mut line = String::new();
+        io::stdin().lock().read_line(&mut line)?;
+
+        if let Ok(choice) = line.trim().parse::<usize>() {
+            if choice <= matching_commands.len() {
+                let cmd_to_execute = &matching_commands[choice - 1];
+                println!("Executing: {}", cmd_to_execute);
+                let (shell, shell_arg) = if cfg!(target_os = "windows") {
+                    ("cmd", "/C")
+                } else {
+                    ("sh", "-c")
+                };
+                Command::new(shell)
+                .arg(shell_arg)
+                .arg(&cmd_to_execute)
+                .stdin(Stdio::inherit())
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
+                .status()
+                .context(format!("Failed to execute: {}", cmd_to_execute))?;
             }
-
-            print!("Enter a number to execute: ");
-            io::stdout().flush()?;
-
-            let stdin = io::stdin();
-            let mut line = String::new();
-            stdin.lock().read_line(&mut line)?;
-
-            if let Ok(choice) = line.trim().parse::<usize>() {
-                if choice <= matching_commands.len() {
-                    let cmd_to_execute = &matching_commands[choice - 1];
-                    println!("Executing: {}", cmd_to_execute);
-                    let (shell, shell_arg) = if cfg!(target_os = "windows") {
-                        ("cmd", "/C")
-                    } else {
-                        ("sh", "-c")
-                    };
-                    let _status = Command::new(shell)
-                    .arg(shell_arg)
-                    .arg(&cmd_to_execute)
-                    .stdin(Stdio::inherit())
-                    .stdout(Stdio::inherit())
-                    .stderr(Stdio::inherit())
-                    .status()
-                    .context(format!("Failed to execute: {}", cmd_to_execute))?;
-                }
-            };
-        }
+        };
+    };
     Ok(())
 }
 
@@ -311,9 +300,9 @@ fn main() -> Result<()> {
         Some(Commands::New { command, description }) => new_command(command, description),
         Some(Commands::List) => list_commands(),
         Some(Commands::Grep { pattern }) => search_commands(pattern),
-        Some(Commands::Rm { command }) => delete_command(command),
+        Some(Commands::Rm { pattern }) => delete_command(pattern),
         Some(Commands::Edit) => edit_commands(),
-        Some(Commands::Run { command }) => execute_command(command),
+        Some(Commands::Run { pattern }) => execute_command(pattern),
         None => {
             Cli::parse_from(["keepc", "--help"]);
             Ok(())

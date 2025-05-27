@@ -44,8 +44,7 @@ impl CommandStore {
 }
 
 #[derive(Parser)]
-#[command(name = "keepc")]
-#[command(about = "Keep and manage useful commands", long_about = None)]
+#[command(name = "keepc", about = "Keep and manage useful commands")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -56,39 +55,65 @@ enum Commands {
     // Add a new command
     #[command(about = "Add a new command")]
     New {
-        #[clap(required = false)]
         command: Option<String>,
-        #[clap(required = false)]
+        description: Option<String>,
+    },
+    #[command(hide = true)]
+    Add {
+        command: Option<String>,
         description: Option<String>,
     },
     // List all commands
     #[command(about = "List all saved commands")]
     List,
+    #[command(hide = true)]
+    Ls,
     // Search for a command
     #[command(about = "Search for commands matching a pattern")]
-    Grep {
-        pattern: String,
-    },
+    Grep { pattern: String },
+    #[command(hide = true)]
+    Find { pattern: String },
+    #[command(hide = true)]
+    Search { pattern: String },
     // Delete a command
     #[command(about = "Delete a saved command")]
-    Rm {
-        pattern: String,
-    },
+    Remove { pattern: String },
+    #[command(hide = true)]
+    Rm { pattern: String },
+    #[command(hide = true)]
+    Delete { pattern: String },
     // Edit commands in a text editor
     #[command(about = "Edit commands in a text editor")]
     Edit,
     // Execute a saved command
     #[command(about = "Execute a saved command")]
-    Run {
-        pattern: String,
-    },
+    Run { pattern: String },
+    #[command(hide = true)]
+    Execute { pattern: String },
 }
-
 
 fn get_commands_file() -> Result<PathBuf> {
     let mut path = dirs::config_dir().context("Could not determine config directory")?;
     path.push("keepc");
     Ok(path.join("commands.json"))
+}
+
+// Find all commands that match the pattern. Used in List, search and delete commands.
+fn search_logic(pattern: String, store: &CommandStore) -> Vec<String> {
+    let keywords: Vec<&str> = pattern.split_whitespace().collect();
+    let mut matching_commands = Vec::new();
+
+    for (cmd, desc) in &store.commands {
+        let matched_keywords = keywords.iter()
+        .filter(|keyword| {
+            cmd.to_lowercase().contains(&keyword.to_lowercase())
+            || desc.to_lowercase().contains(&keyword.to_lowercase())
+        }).count();
+        if matched_keywords == keywords.len() {
+            matching_commands.push(cmd.clone());
+        }
+    }
+    matching_commands
 }
 
 fn new_command(command: Option<String>, description: Option<String>) -> Result<()> {
@@ -122,7 +147,7 @@ fn new_command(command: Option<String>, description: Option<String>) -> Result<(
             line.trim().to_string()
         }
     };
-    store.commands.insert(command.clone(), description);
+    store.commands.insert(command, description);
     store.save(&path)?;
     Ok(())
 }
@@ -146,24 +171,14 @@ fn search_commands(pattern: String) -> Result<()> {
     let path = get_commands_file()?;
     let store = CommandStore::load(&path)?;
 
-    if store.commands.is_empty() {
-        println!("No commands saved.");
-        return Ok(());
-    }
-
-    let pattern = pattern.to_lowercase();
-    let mut found = false;
-
-    for (cmd, desc) in &store.commands {
-        if cmd.to_lowercase().contains(&pattern) || desc.to_lowercase().contains(&pattern) {
-            println!("$ \x1b[34m{}\x1b[0m: {}", cmd, desc);
-            found = true;
+    let matching_commands = search_logic(pattern.clone(), &store);
+    if matching_commands.is_empty() {
+        println!("No commands found matching '{}'", pattern);
+    } else {
+        for cmd in matching_commands {
+            println!("$ \x1b[34m{}\x1b[0m: {}", cmd, store.commands.get(&cmd).unwrap_or(&String::new()));
         }
     }
-
-    if !found {
-        println!("No commands found matching '{}'", pattern);
-    };
     Ok(())
 }
 
@@ -172,12 +187,7 @@ fn delete_command(pattern: String) -> Result<()> {
     let path = get_commands_file()?;
     let mut store = CommandStore::load(&path)?;
 
-    // Find all commands that match the pattern
-    let pattern = pattern.to_lowercase();
-    let matching_commands: Vec<String> = store.commands.iter()
-        .filter(|(cmd, desc)| cmd.to_lowercase().contains(&pattern) || desc.to_lowercase().contains(&pattern))
-        .map(|(cmd, _)| cmd.clone())
-        .collect();
+    let matching_commands = search_logic(pattern.clone(), &store);
     if matching_commands.is_empty() {
         println!("No commands found matching '{}'", pattern);
     } else {
@@ -249,12 +259,7 @@ fn execute_command(pattern: String) -> Result<()> {
     let path = get_commands_file()?;
     let store = CommandStore::load(&path)?;
 
-    // Find all commands that match the pattern
-    let pattern = pattern.to_lowercase();
-    let matching_commands: Vec<String> = store.commands.iter()
-        .filter(|(cmd, desc)| cmd.to_lowercase().contains(&pattern) || desc.to_lowercase().contains(&pattern))
-        .map(|(cmd, _)| cmd.clone())
-        .collect();
+    let matching_commands = search_logic(pattern.clone(), &store);
     if matching_commands.is_empty() {
         println!("No commands found matching '{}'", pattern);
     } else {
@@ -289,7 +294,7 @@ fn execute_command(pattern: String) -> Result<()> {
                 .status()
                 .context(format!("Failed to execute: {}", cmd_to_execute))?;
             }
-        };
+        }
     };
     Ok(())
 }
@@ -297,12 +302,19 @@ fn execute_command(pattern: String) -> Result<()> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
-        Some(Commands::New { command, description }) => new_command(command, description),
-        Some(Commands::List) => list_commands(),
-        Some(Commands::Grep { pattern }) => search_commands(pattern),
-        Some(Commands::Rm { pattern }) => delete_command(pattern),
+        Some(Commands::New { command, description })
+        | Some(Commands::Add { command, description }) => new_command(command, description),
+        Some(Commands::List)
+        | Some(Commands::Ls) => list_commands(),
+        Some(Commands::Grep { pattern })
+        | Some(Commands::Find { pattern })
+        | Some(Commands::Search { pattern }) => search_commands(pattern),
+        Some(Commands::Remove { pattern })
+        | Some(Commands::Rm { pattern })
+        | Some(Commands::Delete { pattern }) => delete_command(pattern),
         Some(Commands::Edit) => edit_commands(),
-        Some(Commands::Run { pattern }) => execute_command(pattern),
+        Some(Commands::Run { pattern })
+        | Some(Commands::Execute { pattern }) => execute_command(pattern),
         None => {
             Cli::parse_from(["keepc", "--help"]);
             Ok(())

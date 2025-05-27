@@ -5,15 +5,15 @@ Keep Command or Keepc is a meta cli program designed to keep important commands 
 Download the [keepc binary](https://github.com/nickcat1/keepc/releases) and move it to /home/$USER/.local/bin/keepc
 
 ## Keepc Commands
-| Command | Description |
+| Commands: | Descriptions: |
 | ------- | ----------- |
-| new | Add a new command |
-| list | List all saved commands |
-| grep | Search for commands matching a pattern |
-| rm | Delete a saved command |
-| edit | Edit commands in a text editor |
-| run | Execute a saved command |
-| help | Print the list of cammands or the help of the given subcommands |
+| New (Add) | Add a new command. |
+| List (ls) | List all saved commands. |
+| Grep (Find, Search) | Search for commands matching a pattern. |
+| Remove (Delete, rm) | Delete a saved command. |
+| Edit | Edit commands in a text editor. |
+| Run (Execute) | Execute a saved command. |
+| Help | Print the list of cammands or the help of the given subcommands. |
 
 ## How to Build
 `git clone https://github.com/nickcat1/keepc.git`
@@ -32,9 +32,7 @@ Create a pull request.
 [Issue tracker](https://github.com/nickcat1/keepc/issues).
 
 ## TODO
-Add other ways to run existing commands. For example, list/ls, new/add, run/execute....
-
-Make search, rm, and run commands search text in any order.
+....
 
 ## License
 Distributed under the [GPL-3.0 License](LICENSE).

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, CommandFactory};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
@@ -7,6 +7,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use tempfile::NamedTempFile;
+use colored::Colorize;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct CommandStore {
@@ -162,7 +163,7 @@ fn list_commands() -> Result<()> {
     }
 
     for (cmd, desc) in &store.commands {
-        println!("$ \x1b[34m{}\x1b[0m: {}", cmd, desc);
+        println!("$ {}{}", cmd.bright_green(), (": ".to_owned() + desc).blue());
     };
     Ok(())
 }
@@ -176,7 +177,8 @@ fn search_commands(pattern: String) -> Result<()> {
         println!("No commands found matching '{}'", pattern);
     } else {
         for cmd in matching_commands {
-            println!("$ \x1b[34m{}\x1b[0m: {}", cmd, store.commands.get(&cmd).unwrap_or(&String::new()));
+            println!("$ {}{}", cmd.bright_green(), 
+            (": ".to_owned() + store.commands.get(&cmd).unwrap_or(&String::new())).blue());
         }
     }
     Ok(())
@@ -193,10 +195,10 @@ fn delete_command(pattern: String) -> Result<()> {
     } else {
         println!("Found {} matching commands:", matching_commands.len());
         for (i, cmd) in matching_commands.iter().enumerate() {
-            println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+            println!("[{}] {}{}", 
             i + 1, 
-            cmd, 
-            store.commands.get(cmd).unwrap_or(&String::new()));
+            cmd.bright_green(), 
+            (": ".to_owned() + store.commands.get(cmd).unwrap_or(&String::new())).blue());
         };
         print!("Enter a number to delete: ");
         io::stdout().flush()?;
@@ -265,10 +267,10 @@ fn execute_command(pattern: String) -> Result<()> {
     } else {
         println!("Found {} matching commands:", matching_commands.len());
         for (i, cmd) in matching_commands.iter().enumerate() {
-            println!("[{}] \x1b[34m{}\x1b[0m: {}", 
+            println!("[{}] {}{}", 
             i + 1, 
-            cmd, 
-            store.commands.get(cmd).unwrap_or(&String::new()));
+            cmd.bright_green(), 
+            (": ".to_owned() + store.commands.get(cmd).unwrap_or(&String::new())).blue());
         };
         print!("Enter a number to execute: ");
         io::stdout().flush()?;
@@ -300,8 +302,27 @@ fn execute_command(pattern: String) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    match cli.command {
+    let mut commands = Vec::new();
+    let cli_command = Cli::command();
+    for subcommand in cli_command.get_subcommands() {
+        commands.push(subcommand.get_name());
+    }
+    commands.extend_from_slice(&["help", "--help", "-h"]);
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 { //search saved commands
+        if !commands.contains(&args[1].as_str()) {
+            let store = CommandStore::load(&get_commands_file()?)?;
+            let matching_commands = search_logic((args[1..].join(" ")).clone(), &store);
+            if !matching_commands.is_empty() {
+                return Ok(for cmd in matching_commands {
+                    println!("$ {}{}",
+                    cmd.bright_green(), 
+                    (": ".to_owned() + store.commands.get(&cmd).unwrap_or(&String::new())).blue());
+                });
+            }
+        }
+    }
+    match Cli::parse().command {
         Some(Commands::New { command, description })
         | Some(Commands::Add { command, description }) => new_command(command, description),
         Some(Commands::List)

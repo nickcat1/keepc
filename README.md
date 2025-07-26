@@ -29,7 +29,7 @@ Download the [keepc binary](https://github.com/nickcat1/keepc/releases) and move
 > `Run`: Execute.
 </details>
 
-## How to Build
+## Quick Test
 `git clone https://github.com/nickcat1/keepc.git`
 
 `cd keepc`
@@ -38,12 +38,17 @@ Download the [keepc binary](https://github.com/nickcat1/keepc/releases) and move
 
 `cargo run`
 
-The keepc binary will be located at keepc/target/debug/keepc.
-
 ## How to Contribute
 Create a pull request.
 
 [Issue tracker](https://github.com/nickcat1/keepc/issues).
+
+## Build Releases
+`cargo build --release`
+
+`cargo build --release --target x86_64-pc-windows-gnu`: Windows
+
+The keepc Linux binary will be located at keepc/target/release/keepc. The Windows binary will be located at keepc/target/x86_64-pc-windows-gnu/release/keepc.exe
 
 ## TODO
 ....
